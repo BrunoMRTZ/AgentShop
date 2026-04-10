@@ -5,6 +5,8 @@ AgentShop é uma **demonstração funcional de Agentic Retail**, explorando como
 O projeto se inspira em conceitos aplicados no **Agentic AI Decision Lab / Hybrid Retail (LabDX)**, servindo como POC educacional e técnica para estudo, experimentação e evolução de arquiteturas agentic no varejo digital [1](https://labdx.org/produto/agentic-ai-decision-lab/).
 
 ---
+Visualização: [https://labdx.org/Arquivos/agentic-retail]
+
 
 ## ✨ Visão Geral
 

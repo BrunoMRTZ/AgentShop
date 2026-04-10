@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $host = 'localhost';
 $db = 'xxxxxxx';
 $user = 'xxxxxxx"
-$pass = 'xxxxxxAdmin.'; // ⚠️ ATENÇÃO: COLOQUE A SENHA DO BANCO DE DADOS AQUI
+$pass = 'xxxxxx'; // ⚠️ ATENÇÃO: COLOQUE A SENHA DO BANCO DE DADOS AQUI
 $charset = 'utf8mb4';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";

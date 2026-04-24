@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ShoppingCart, Bot, Search, User, Loader2, Sparkles, Globe, X } from 'lucide-react';
+import { ShoppingCart, Bot, Search, User, Loader2, Sparkles, Globe } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAgent } from '../context/AgentContext';
 import { products } from '../data/products';
 import { apiClient } from '../services/apiClient';
+import { MarketExplorer } from './MarketExplorer';
+import { MarketExplorerIA } from './MarketExplorerIA';
 
 interface HeaderProps {
   onCartClick: () => void;
@@ -19,6 +21,7 @@ export function Header({ onCartClick, onSearch, onUserClick }: HeaderProps) {
   const [isAiSearching, setIsAiSearching] = useState(false);
   const [showAiPopup, setShowAiPopup] = useState(false);
   const [showIframe, setShowIframe] = useState(false);
+  const [showIA, setShowIA] = useState(false);
 
   useEffect(() => {
     if (liveQuery.trim().length > 2) {
@@ -33,12 +36,16 @@ export function Header({ onCartClick, onSearch, onUserClick }: HeaderProps) {
     }
   }, [liveQuery]);
 
-  const handleCommitSearch = () => {
+  const handleCommitSearch = (openCart = false) => {
     onSearch(liveQuery);
     setShowAiPopup(false);
-    setTimeout(() => {
-      document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    if (openCart) {
+      onCartClick();
+    } else {
+      setTimeout(() => {
+        document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
   };
 
   const getAiOverview = (q: string) => {
@@ -101,16 +108,20 @@ export function Header({ onCartClick, onSearch, onUserClick }: HeaderProps) {
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 items-center">
                 <button
+                  onClick={() => setShowIA(true)}
+                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white px-2 py-1 rounded-md transition-colors mr-1 cursor-pointer flex items-center gap-1"
+                  title="Pesquisa IA do Google"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold">IA</span>
+                </button>
+                <button
                   onClick={() => setShowIframe(true)}
                   className="bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-violet-600 px-2 py-1 rounded-md transition-colors mr-1 cursor-pointer"
                   title="Abrir pesquisa extrema (Iframe Google)"
                 >
                   <Globe className="w-3.5 h-3.5" />
                 </button>
-                <div className="flex gap-1 items-center bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
-                  <Sparkles className="w-3 h-3" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">IA</span>
-                </div>
               </div>
             </div>
 
@@ -149,8 +160,8 @@ export function Header({ onCartClick, onSearch, onUserClick }: HeaderProps) {
                       </div>
 
                       <button
-                        onClick={handleCommitSearch}
-                        className="w-full flex justify-center items-center gap-2 bg-gray-900 text-white hover:bg-black py-3 rounded-xl text-sm font-bold transition-colors mt-3"
+                        onClick={(e) => { e.stopPropagation(); handleCommitSearch(true); }}
+                        className="w-full flex justify-center items-center gap-2 bg-gray-900 text-white hover:bg-black py-3 rounded-xl text-sm font-bold transition-colors mt-3 relative z-50"
                       >
                         <Search className="w-4 h-4" />
                         Mostrar resultados no painel de compras
@@ -253,48 +264,24 @@ export function Header({ onCartClick, onSearch, onUserClick }: HeaderProps) {
         </div>
       </div>
 
-      {showIframe && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6" style={{ background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)' }}>
-          <div className="w-full max-w-5xl h-[80vh] mt-4 bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col animate-fade-in border border-gray-200">
-            <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 px-4 py-3 flex justify-between items-center shrink-0">
-              <div className="flex gap-2 items-center">
-                <Globe className="w-5 h-5 text-violet-600" />
-                <span className="text-sm font-bold text-gray-700">Explorador de Mercado (Google Live)</span>
-              </div>
+      {showIframe && createPortal(
+        <MarketExplorer
+          isOpen={showIframe}
+          onClose={() => setShowIframe(false)}
+          initialQuery={liveQuery}
+        />,
+        document.body
+      )}
 
-              <div className="flex gap-2 items-center">
-                <button
-                  onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(liveQuery || 'iPhone')}&udm=50`, '_blank')}
-                  className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition shadow-md"
-                >
-                  <Globe className="w-4 h-4" /> Visualizar IA em Nova Aba Segura
-                </button>
-                <button
-                  onClick={() => setShowIframe(false)}
-                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 transition-colors"
-                  title="Fechar"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="w-full bg-gray-200 px-4 py-2 border-b border-gray-300 flex items-center gap-2 text-xs text-gray-500 shadow-inner shrink-0">
-              <span className="font-mono bg-white px-2 py-1 rounded w-full overflow-hidden text-ellipsis whitespace-nowrap">
-                https://www.google.com/search?q={encodeURIComponent(liveQuery || 'Apple iPhone 15 Pro Max')}&udm=50
-              </span>
-            </div>
-
-            <iframe
-              src={`https://www.google.com/search?q=${encodeURIComponent(liveQuery || 'Apple iPhone 15 Pro Max')}&udm=50&igu=1`}
-              className="w-full h-full flex-1 border-0 bg-white"
-              title="Google Web Search"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            ></iframe>
-          </div>
-        </div>,
+      {showIA && createPortal(
+        <MarketExplorerIA
+          isOpen={showIA}
+          onClose={() => setShowIA(false)}
+          initialQuery={liveQuery}
+        />,
         document.body
       )}
     </header>
   );
 }
+

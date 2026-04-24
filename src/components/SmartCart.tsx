@@ -130,8 +130,17 @@ export function SmartCart({ isOpen, onClose, onCheckout }: SmartCartProps) {
           ) : (
             items.map(item => (
               <div key={item.product.id} className="flex gap-3 bg-gray-50 rounded-xl p-3 group">
-                <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="text-3xl">{item.product.image}</span>
+                <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {item.product.image && item.product.image.startsWith('http') ? (
+                    <img
+                      src={item.product.image}
+                      alt={item.product.name}
+                      className="w-full h-full object-cover rounded-lg"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <span className="text-3xl">{item.product.image}</span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-sm font-semibold text-gray-900 truncate">{item.product.name}</h4>

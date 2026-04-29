@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, Loader2, Code, Sparkles, AlertTriangle, BookOpen, ExternalLink } from 'lucide-react';
-import { ShoppingButton } from './ShoppingButton'; // Ajuste o caminho conforme necessário
-interface Citation { text: string; urls: string[]; }
-interface Link { publisher: string; text: string; url: string; }
-interface AIResponse { response_text: string; citations: Citation[]; links: Link[]; }
+import { X, Loader2, Sparkles, AlertTriangle, ShoppingCart, ExternalLink, Trash2 } from 'lucide-react';
+
+interface Product {
+  id: string;
+  title: string;
+  price: string;
+  currency: string;
+  image: string;
+  url: string;
+  seller: string;
+  rating?: string;
+  reviews?: string;
+  availability?: string;
+}
 
 interface MarketExplorerIAProps {
   isOpen: boolean;
@@ -14,11 +23,18 @@ interface MarketExplorerIAProps {
 export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketExplorerIAProps) {
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ aiResponse: AIResponse; html: string } | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(true);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll dos logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -30,239 +46,720 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
   }, [isOpen, initialQuery]);
 
   const addLog = (msg: string) => {
-    setDebugLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    const timestamp = new Date().toLocaleTimeString('pt-BR');
+    setLogs(prev => [...prev, `[${timestamp}] ${msg}`]);
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+  };
+
+  const parseProductsFromHTML = (html: string): Product[] => {
+    const products: Product[] = [];
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      addLog('🔍 Iniciando parsing do HTML...');
+
+      // Seletores para produtos Bing Shopping
+      const productElements = doc.querySelectorAll(
+        '[data-index], .search-result-item, .product-item, [class*="product"], [class*="item-card"]'
+      );
+
+      addLog(`📦 Encontrados ${productElements.length} elementos potenciais`);
+
+      productElements.forEach((element, index) => {
+        try {
+          // Extrai título
+          const titleEl = element.querySelector('h2, [class*="title"], a[title]');
+          const title = titleEl?.textContent?.trim() || `Produto ${index + 1}`;
+
+          // Extrai preço
+          const priceEl = element.querySelector('[class*="price"], [data-price], .price');
+          const priceText = priceEl?.textContent?.trim() || 'N/A';
+          
+          // Extrai URL
+          const linkEl = element.querySelector('a[href]') as HTMLAnchorElement;
+          const url = linkEl?.href || '#';
+
+          // Extrai imagem
+          const imgEl = element.querySelector('img');
+          const image = imgEl?.src || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23ccc%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22%3ESem imagem%3C/text%3E%3C/svg%3E';
+
+          // Extrai vendedor
+          const sellerEl = element.querySelector('[class*="seller"], [class*="store"]');
+          const seller = sellerEl?.textContent?.trim() || 'Bing Shopping';
+
+          // Extrai avaliação
+          const ratingEl = element.querySelector('[class*="rating"], .rating');
+          const rating = ratingEl?.textContent?.trim() || '';
+
+          // Extrai disponibilidade
+          const availEl = element.querySelector('[class*="available"], [class*="stock"]');
+          const availability = availEl?.textContent?.trim() || 'Disponível';
+
+          // Valida dados mínimos
+          if (title && title !== `Produto ${index + 1}`) {
+            const product: Product = {
+              id: `product-${index}-${Date.now()}`,
+              title,
+              price: priceText.replace(/[^\d,.-]/g, '') || priceText,
+              currency: priceText.includes('R$') ? 'R$' : priceText.includes('$') ? 'USD' : '',
+              image,
+              url,
+              seller,
+              rating: rating || undefined,
+              reviews: undefined,
+              availability,
+            };
+
+            products.push(product);
+            addLog(`✅ Produto extraído: ${title.substring(0, 50)}...`);
+          }
+        } catch (err) {
+          addLog(`⚠️ Erro ao processar elemento ${index}: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+        }
+      });
+
+      addLog(`🎯 Total de ${products.length} produtos extraídos com sucesso`);
+    } catch (err) {
+      addLog(`❌ Erro crítico no parsing: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+    }
+
+    return products;
   };
 
   const handleSearch = async (searchQuery: string) => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim()) {
+      setError('Digite um termo para pesquisar');
+      return;
+    }
 
     setLoading(true);
     setError('');
-    setResult(null);
-    setDebugLogs([]);
+    setProducts([]);
+    setLogs([]);
+    setShowLogs(true);
 
     try {
-      addLog('Iniciando pesquisas conjuntas: Contexto (Wikipedia) e Ofertas (Bing Shopping) para: ' + searchQuery);
+      const bingUrl = `https://www.bing.com/shop?q=${encodeURIComponent(searchQuery)}`;
+      addLog(`🔗 Acessando: ${bingUrl}`);
 
-      const proxyBasePath = '/proxy.php';
+      // Tentativa 1: Usando proxy CORS gratuito
+      const corsProxies = [
+        `https://cors-anywhere.herokuapp.com/${bingUrl}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(bingUrl)}`,
+        bingUrl // Tentativa direta
+      ];
 
-      // PARTE 1: Resumo explicativo (Texto) via pesquisa normal do Bing
-      let infoText = '';
-      let infoCitation = null;
-      try {
-        const urlBingSearch = `https://www.bing.com/shop?q=${encodeURIComponent(searchQuery)}`;
-        const proxySearchUrl = `${proxyBasePath}?url=${encodeURIComponent(urlBingSearch)}`;
+      let htmlContent = '';
+      let successProxy = '';
 
-        addLog('Consultando Bing Search Normal via proxy para obter texto descritivo e contexto...');
-        const searchRes = await fetch(proxySearchUrl);
-        const searchData = await searchRes.json();
+      for (const proxyUrl of corsProxies) {
+        try {
+          addLog(`🌐 Tentando com proxy: ${proxyUrl.substring(0, 60)}...`);
+          
+          const response = await fetch(proxyUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+            mode: 'cors',
+          });
 
-        if (searchData.contents) {
-          const sParser = new DOMParser();
-          const sDoc = sParser.parseFromString(searchData.contents, 'text/html');
-
-          // O Bing usa '.b_algo p', '.b_caption p' ou '.b_xlText' para os trechos (snippets) descritivos
-          const snippetNodes = Array.from(sDoc.querySelectorAll('.b_algo p, .b_caption p, .b_xlText, .rw_rl'));
-
-          for (const node of snippetNodes) {
-            const text = node.textContent?.trim() || '';
-            // Garante que é um texto encorpado explicativo, de no mínimo 80 caracteres (e descarta os que têm só preço na descrição)
-            if (text.length > 80 && text.length < 600 && !text.match(/R\$\s?[\d.,]+/i)) {
-              infoText = text;
-              const aTag = node.closest('.b_algo')?.querySelector('a');
-              if (aTag) {
-                const h = aTag.getAttribute('href');
-                const t = aTag.textContent?.trim();
-                if (h && h.startsWith('http')) {
-                  infoCitation = { text: `Fonte do Resumo: ${t || 'Bing Search'}`, urls: [h] };
-                }
-              }
-              break;
-            }
+          if (response.ok) {
+            htmlContent = await response.text();
+            successProxy = proxyUrl;
+            addLog(`✅ Conexão bem-sucedida com proxy`);
+            break;
           }
-          if (infoText) addLog('Descritivo orgânico obtido com sucesso do Bing Search.');
-          else addLog('Nenhum descritivo considerável encontrado na busca do Bing.');
+        } catch (err) {
+          addLog(`⚠️ Proxy falhou: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+          continue;
         }
-      } catch (err: any) {
-        addLog(`Ignorado erro da Busca Descritiva: ${err.message}`);
       }
 
-      addLog(`Busca do Algorítmo Orgânico finalizada.`);
-
-      if (!infoText) {
-        addLog('Nenhum resultado final útil retornado.');
-        setResult({
-          aiResponse: {
-            response_text: 'A extração não conseguiu encontrar descritivos para esta pesquisa no Bing. Use os logs acima e veja o HTML embutido na página com o botão cinza.',
-            citations: [],
-            links: []
+      if (!htmlContent) {
+        addLog('📝 Nenhum proxy funcionou. Usando estratégia alternativa...');
+        
+        // Estratégia alternativa: Mock de produtos para demonstração
+        addLog('🎨 Gerando dados de exemplo para demonstração');
+        const mockProducts: Product[] = [
+          {
+            id: 'mock-1',
+            title: 'iPhone 15 Pro Max 256GB',
+            price: '7.999',
+            currency: 'R$',
+            image: 'https://images.unsplash.com/photo-1592286927505-1def25115558?w=300&h=300&fit=crop',
+            url: 'https://www.bing.com/shop',
+            seller: 'Amazon Brasil',
+            rating: '4.8',
+            availability: 'Em estoque',
           },
-          html: '' // Mantido vazio pois não há mais parsing completo da tela pesada
-        });
+          {
+            id: 'mock-2',
+            title: 'Samsung Galaxy S24 Ultra',
+            price: '6.499',
+            currency: 'R$',
+            image: 'https://images.unsplash.com/photo-1511707267537-b85faf00021e?w=300&h=300&fit=crop',
+            url: 'https://www.bing.com/shop',
+            seller: 'Mercado Livre',
+            rating: '4.9',
+            availability: 'Em estoque',
+          },
+          {
+            id: 'mock-3',
+            title: 'MacBook Pro 16" M3 Max',
+            price: '12.499',
+            currency: 'R$',
+            image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=300&h=300&fit=crop',
+            url: 'https://www.bing.com/shop',
+            seller: 'Apple Store',
+            rating: '4.7',
+            availability: 'Em estoque',
+          },
+        ];
+
+        setProducts(mockProducts);
+        addLog(`✨ ${mockProducts.length} produtos de exemplo carregados`);
+        setError('Nota: Resultados de exemplo (proxies CORS limitados). Para produção, use um backend próprio.');
         return;
       }
 
-      let finalResponseText = `🧠 **Descritivo (Bing AI):** ${infoText}\n\n`;
+      // Parse dos produtos
+      const parsedProducts = parseProductsFromHTML(htmlContent);
 
-      const citationsOut: Citation[] = [];
-      if (infoCitation) citationsOut.push(infoCitation as Citation);
-
-      const aiResponse: AIResponse = {
-        response_text: finalResponseText,
-        citations: citationsOut,
-        links: [] // Nenhum link em formato de cartão aqui
-      };
-
-      setResult({ aiResponse, html: '' });
-      addLog('Layout renderizado com sucesso na tela!');
-    } catch (err: any) {
-      addLog(`FATAL ERROR CRASH: ${err.message}`);
-      if (err.name === 'SyntaxError' || err.message.includes('JSON')) {
-        setError('O servidor retornou o arquivo proxy em texto puro em vez de executá-lo. Isso significa que você está rodando o site localmente sem um servidor PHP. Para funcionar, suba os arquivos do build (na pasta dist/) para sua hospedagem Hostinger, pois apenas lá o proxy.php será interpretado!');
+      if (parsedProducts.length === 0) {
+        addLog('⚠️ Nenhum produto encontrado. Tentando padrões alternativos...');
+        addLog('💡 Dica: Configure um backend para scraping real');
+        setError('Nenhum produto encontrado. Use um backend próprio para melhor scraping.');
       } else {
-        setError(err.message || 'Falha ao executar rotina de scraping no Google Shopping.');
+        setProducts(parsedProducts);
+        addLog(`🎉 Pesquisa concluída! ${parsedProducts.length} produtos encontrados`);
       }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Erro desconhecido';
+      addLog(`❌ ERRO: ${errorMsg}`);
+      setError(`Erro na busca: ${errorMsg}`);
     } finally {
       setLoading(false);
+      addLog('✋ Busca finalizada');
     }
-  };
-
-  // Adaptação da visualização do código HTML focado na nova rotina
-  const handleViewHtml = () => {
-    if (!result?.html) return;
-
-    const cleanedHtml = `
-      <html>
-        <head><title>Scraping Bruto Exibido</title></head>
-        <body style="font-family: sans-serif; padding: 20px; line-height: 1.6;">
-          <h2>Página Base de Extração:</h2>
-          <hr/>
-          \${result.html}
-        </body>
-      </html>
-   `;
-    const blob = new Blob([cleanedHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-  };
-  const formatResponseText = (text: string) => {
-    // Regex explica:
-    // (?<=[.?!])\s+  -> Quebra em pontuação final seguida de espaço
-    // |              -> OU
-    // (?<=\+\d+)     -> Quebra após o sinal de + e os dígitos
-    const sentences = text.split(/(?<=[.?!])\s+|(?<=\+\d+)/);
-
-    return sentences.map((sentence, idx) => {
-      // Remove espaços extras que podem sobrar no início da frase após o split
-      const trimmedSentence = sentence.trim();
-      if (!trimmedSentence) return null;
-
-      const colonIndex = trimmedSentence.indexOf(':');
-      if (colonIndex !== -1) {
-        return (
-          <p key={idx} style={{ marginBottom: '12px', lineHeight: '1.6', color: '#444' }}>
-            <strong style={{ color: '#111' }}>{trimmedSentence.slice(0, colonIndex + 1)}</strong>
-            <br />
-            {trimmedSentence.slice(colonIndex + 1)}
-          </p>
-        );
-      }
-      return <p key={idx} style={{ marginBottom: '12px', lineHeight: '1.6', color: '#444' }}>{trimmedSentence}</p>;
-    });
   };
 
   if (!isOpen) return null;
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px', backdropFilter: 'blur(4px)' }}>
-      <div style={{ backgroundColor: '#fff', borderRadius: '16px', width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-
-        <div style={{ padding: '20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Sparkles size={24} color="#667eea" />
-            <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#333' }}>Market Explorer IA</h2>
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+        padding: '20px',
+        backdropFilter: 'blur(5px)',
+      }}
+    >
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: '16px',
+          width: '100%',
+          maxWidth: '1400px',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #00a4ef 0%, #0078d4 100%)',
+            color: '#fff',
+            padding: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '2px solid #0078d4',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <ShoppingCart size={28} />
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700' }}>
+                Market Explorer
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', opacity: 0.9 }}>
+                Busca de produtos Bing Shopping
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888' }}><X size={24} /></button>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '8px',
+              cursor: 'pointer',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)')
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+            }
+          >
+            <X size={24} />
+          </button>
         </div>
 
-        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
-            <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Digite o termo para buscar..." style={{ flex: 1, padding: '12px 16px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '1rem' }} onKeyDown={(e) => e.key === 'Enter' && handleSearch(query)} />
-            <button onClick={() => handleSearch(query)} disabled={loading} style={{ padding: '12px 24px', backgroundColor: '#667eea', color: '#fff', border: 'none', borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
-            </button>
-          </div>
+        {/* Barra de Busca */}
+        <div
+          style={{
+            padding: '20px 24px',
+            background: '#f8f9fa',
+            borderBottom: '1px solid #e0e0e0',
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center',
+          }}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch(query)}
+            placeholder="Ex: iPhone, Samsung, Laptop..."
+            disabled={loading}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              fontSize: '0.95rem',
+              border: '2px solid #00a4ef',
+              borderRadius: '8px',
+              outline: 'none',
+              transition: 'all 0.2s',
+              background: '#fff',
+            }}
+            onFocus={(e) => (e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0, 164, 239, 0.1)')}
+            onBlur={(e) => (e.currentTarget.style.boxShadow = 'none')}
+          />
 
-          {error && !loading && (
-            <div style={{ padding: '16px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '8px', border: '1px solid #f87171', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '4px' }}>
-                <AlertTriangle size={20} /> Falha na Requisição
+          <button
+            onClick={() => handleSearch(query)}
+            disabled={loading || !query.trim()}
+            style={{
+              padding: '12px 28px',
+              background: loading ? '#ccc' : 'linear-gradient(135deg, #00a4ef 0%, #0078d4 100%)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontWeight: '600',
+              fontSize: '0.95rem',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 164, 239, 0.4)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            {loading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Pesquisando...
+              </>
+            ) : (
+              <>
+                <ShoppingCart size={18} />
+                Pesquisar
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => setShowLogs(!showLogs)}
+            style={{
+              padding: '12px 16px',
+              background: showLogs ? '#0078d4' : '#e0e0e0',
+              color: showLogs ? '#fff' : '#333',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '0.85rem',
+            }}
+          >
+            {showLogs ? '📋 Logs' : '📋 Ver Logs'}
+          </button>
+        </div>
+
+        {/* Layout Principal */}
+        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          {/* Área Principal - Produtos */}
+          <div style={{ flex: showLogs ? '1 1 70%' : '1 1 100%', overflowY: 'auto', padding: '24px' }}>
+            {error && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  border: '2px solid #fecaca',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  color: '#991b1b',
+                }}
+              >
+                <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <strong>Aviso:</strong>
+                  <p style={{ margin: '4px 0 0' }}>{error}</p>
+                </div>
               </div>
-              <div style={{ lineHeight: '1.5' }}>{error}</div>
-            </div>
-          )}
+            )}
 
-          {debugLogs.length > 0 && (
-            <div style={{ marginBottom: '24px', backgroundColor: '#1e293b', color: '#f8fafc', padding: '16px', borderRadius: '8px', fontSize: '0.85rem', fontFamily: 'monospace', maxHeight: '200px', overflowY: 'auto' }}>
-              <strong style={{ color: '#94a3b8', display: 'block', marginBottom: '8px' }}>Terminal de Debug Integrado:</strong>
-              {debugLogs.map((log, index) => (
-                <div key={index} style={{ marginBottom: '4px', borderBottom: '1px solid #334155', paddingBottom: '2px' }}>{log}</div>
-              ))}
-            </div>
-          )}
-
-          {result && !loading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <h3 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>Resposta da IA</h3>
-                {formatResponseText(result.aiResponse.response_text)}
+            {loading && (
+              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                <Loader2
+                  size={48}
+                  color="#00a4ef"
+                  className="animate-spin"
+                  style={{ margin: '0 auto 16px' }}
+                />
+                <p style={{ fontSize: '1.1rem', color: '#333', fontWeight: '600' }}>
+                  Buscando produtos...
+                </p>
+                <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '8px' }}>
+                  Isso pode levar alguns segundos
+                </p>
               </div>
+            )}
 
-              {result.aiResponse.citations.length > 0 && (
-                <div style={{ padding: '16px', backgroundColor: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
-                  <h4 style={{ margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#0369a1' }}><BookOpen size={18} /> Citações</h4>
-                  {result.aiResponse.citations.map((c, i) => (
-                    <div key={i} style={{ marginBottom: '12px' }}>
-                      <p style={{ fontSize: '0.9rem', color: '#334155', marginBottom: '4px' }}>{c.text}</p>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {c.urls.map((url, uIdx) => (
-                          <a key={uIdx} href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#0369a1', fontSize: '0.8rem', textDecoration: 'underline' }}>Fonte {uIdx + 1}</a>
-                        ))}
+            {!loading && products.length === 0 && !error && (
+              <div style={{ textAlign: 'center', marginTop: '80px', color: '#999' }}>
+                <ShoppingCart size={64} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+                <p style={{ fontSize: '1.1rem', color: '#999', fontWeight: '500' }}>
+                  Digite um termo e pesquise para encontrar produtos
+                </p>
+              </div>
+            )}
+
+            {/* Grid de Produtos */}
+            {!loading && products.length > 0 && (
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '16px', color: '#333' }}>
+                  📦 {products.length} Produtos Encontrados
+                </h3>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                    gap: '16px',
+                  }}
+                >
+                  {products.map((product) => (
+                    <div
+                      key={product.id}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        transition: 'all 0.3s',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                      }}
+                      onMouseEnter={(e) => {
+                        const el = e.currentTarget;
+                        el.style.transform = 'translateY(-8px)';
+                        el.style.boxShadow = '0 8px 24px rgba(0, 164, 239, 0.2)';
+                      }}
+                      onMouseLeave={(e) => {
+                        const el = e.currentTarget;
+                        el.style.transform = 'translateY(0)';
+                        el.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
+                      }}
+                    >
+                      {/* Imagem */}
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '200px',
+                          background: '#f0f0f0',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <img
+                          src={product.image}
+                          alt={product.title}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            transition: 'transform 0.3s',
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.transform = 'scale(1.1)')
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.transform = 'scale(1)')
+                          }
+                        />
+                      </div>
+
+                      {/* Conteúdo */}
+                      <div style={{ padding: '16px' }}>
+                        {/* Titulo */}
+                        <h4
+                          style={{
+                            margin: '0 0 8px',
+                            fontSize: '0.95rem',
+                            fontWeight: '600',
+                            color: '#333',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            minHeight: '2.8em',
+                          }}
+                        >
+                          {product.title}
+                        </h4>
+
+                        {/* Preço */}
+                        <div
+                          style={{
+                            fontSize: '1.3rem',
+                            fontWeight: '700',
+                            color: '#0078d4',
+                            marginBottom: '8px',
+                          }}
+                        >
+                          {product.currency} {product.price}
+                        </div>
+
+                        {/* Rating */}
+                        {product.rating && (
+                          <div
+                            style={{
+                              fontSize: '0.85rem',
+                              color: '#666',
+                              marginBottom: '8px',
+                            }}
+                          >
+                            ⭐ {product.rating}
+                          </div>
+                        )}
+
+                        {/* Vendedor */}
+                        <div
+                          style={{
+                            fontSize: '0.8rem',
+                            color: '#999',
+                            marginBottom: '8px',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 1,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          🏪 {product.seller}
+                        </div>
+
+                        {/* Disponibilidade */}
+                        <div
+                          style={{
+                            fontSize: '0.8rem',
+                            color: '#10b981',
+                            marginBottom: '12px',
+                            fontWeight: '500',
+                          }}
+                        >
+                          ✓ {product.availability}
+                        </div>
+
+                        {/* Link */}
+                        <a
+                          href={product.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 16px',
+                            background: 'linear-gradient(135deg, #00a4ef 0%, #0078d4 100%)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            width: '100%',
+                            justifyContent: 'center',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                            e.currentTarget.style.boxShadow =
+                              '0 4px 12px rgba(0, 164, 239, 0.4)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                            e.currentTarget.style.boxShadow = 'none';
+                          }}
+                        >
+                          <ExternalLink size={16} />
+                          Ver Produto
+                        </a>
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
+            )}
+          </div>
 
-              {result.aiResponse.links.length > 0 && (
-                <div style={{ padding: '16px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                  <h4 style={{ margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569' }}><ExternalLink size={18} /> Links Relacionados</h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {result.aiResponse.links.map((l, i) => (
-                      <li key={i} style={{ marginBottom: '8px' }}>
-                        <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: '#475569', textDecoration: 'none', fontSize: '0.9rem' }}>
-                          <strong>{l.publisher}:</strong> {l.text}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {/* Seu botão de Shopping */}
-              <ShoppingButton query={query} />
-
-              {result.html && (
-                <button onClick={handleViewHtml} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer' }}>
-                  <Code size={18} /> Ver Código HTML
+          {/* Painel de Logs */}
+          {showLogs && (
+            <div
+              style={{
+                width: '30%',
+                borderLeft: '1px solid #e0e0e0',
+                display: 'flex',
+                flexDirection: 'column',
+                background: '#1e293b',
+                color: '#f1f5f9',
+              }}
+            >
+              {/* Header Logs */}
+              <div
+                style={{
+                  padding: '16px',
+                  borderBottom: '1px solid #334155',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <strong style={{ fontSize: '0.9rem' }}>📋 Log de Operações</strong>
+                <button
+                  onClick={clearLogs}
+                  style={{
+                    background: '#ef5350',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Limpar
                 </button>
-              )}
+              </div>
+
+              {/* Conteúdo Logs */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '16px',
+                  fontSize: '0.75rem',
+                  fontFamily: 'monospace',
+                  lineHeight: '1.6',
+                }}
+              >
+                {logs.length === 0 ? (
+                  <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                    Aguardando operações...
+                  </div>
+                ) : (
+                  logs.map((log, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        marginBottom: '8px',
+                        paddingBottom: '8px',
+                        borderBottom: '1px solid #334155',
+                        color: log.includes('❌')
+                          ? '#fca5a5'
+                          : log.includes('✅')
+                            ? '#86efac'
+                            : log.includes('⚠️')
+                              ? '#fbbf24'
+                              : '#cbd5e1',
+                      }}
+                    >
+                      {log}
+                    </div>
+                  ))
+                )}
+                <div ref={logsEndRef} />
+              </div>
             </div>
           )}
         </div>
       </div>
+
       <style>{`
-        @keyframes animate-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .animate-spin { animation: animate-spin 1s linear infinite; }
+        @keyframes animate-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+          animation: animate-spin 1s linear infinite;
+        }
+        
+        ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+          background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
       `}</style>
     </div>
   );

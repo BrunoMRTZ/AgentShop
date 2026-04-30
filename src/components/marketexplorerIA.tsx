@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Loader2, Sparkles, AlertTriangle, ShoppingCart, ExternalLink, Trash2 } from 'lucide-react';
+import { X, Loader2, Sparkles, AlertTriangle, ShoppingCart, ExternalLink, Trash2, Star } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -86,7 +86,7 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
 
           // Extrai imagem
           const imgEl = element.querySelector('img');
-          const image = imgEl?.src || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23ccc%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22%3ESem imagem%3C/text%3E%3C/svg%3E';
+          const image = imgEl?.src || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23ccc%22 width=%22200%22 height=%22200%2[...]
 
           // Extrai vendedor
           const sellerEl = element.querySelector('[class*="seller"], [class*="store"]');
@@ -250,6 +250,16 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
     }
   };
 
+  const handleTopRatedSearch = () => {
+    if (!query.trim()) {
+      setError('Digite um termo para pesquisar');
+      return;
+    }
+    const topRatedQuery = `${query} melhor avaliado`;
+    addLog(`⭐ Pesquisando produtos mais bem avaliados: "${topRatedQuery}"`);
+    handleSearch(topRatedQuery);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -340,6 +350,7 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
             display: 'flex',
             gap: '12px',
             alignItems: 'center',
+            flexWrap: 'wrap',
           }}
         >
           <input
@@ -352,6 +363,7 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
             disabled={loading}
             style={{
               flex: 1,
+              minWidth: '200px',
               padding: '12px 16px',
               fontSize: '0.95rem',
               border: '2px solid #00a4ef',
@@ -380,6 +392,7 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
+              whiteSpace: 'nowrap',
             }}
             onMouseEnter={(e) => {
               if (!loading) {
@@ -406,6 +419,39 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
           </button>
 
           <button
+            onClick={handleTopRatedSearch}
+            disabled={loading || !query.trim()}
+            style={{
+              padding: '12px 20px',
+              background: loading || !query.trim() ? '#ccc' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: loading || !query.trim() ? 'not-allowed' : 'pointer',
+              fontWeight: '600',
+              fontSize: '0.95rem',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => {
+              if (!loading && query.trim()) {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 16px rgba(245, 158, 11, 0.4)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <Star size={18} />
+            Melhores Avaliados
+          </button>
+
+          <button
             onClick={() => setShowLogs(!showLogs)}
             style={{
               padding: '12px 16px',
@@ -416,6 +462,7 @@ export function MarketExplorerIA({ isOpen, onClose, initialQuery = '' }: MarketE
               cursor: 'pointer',
               fontWeight: '600',
               fontSize: '0.85rem',
+              whiteSpace: 'nowrap',
             }}
           >
             {showLogs ? '📋 Logs' : '📋 Ver Logs'}

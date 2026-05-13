@@ -1,0 +1,32 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/mcp.schema.json",
+  "mcp_version": "1.0",
+  "name": "LabDX MCP Server",
+  "description": "Servidor MCP do LabDX, expondo conteúdos, dados e operações do site via Model Context Protocol.",
+  "vendor": {
+    "name": "LabDX",
+    "url": "https://labdx.org"
+  },
+  "transport": {
+    "type": "sse",
+    "endpoint": "https://labdx.org/wp-json/stifli-flex-mcp/v1/sse"
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": true,
+    "prompts": false
+  },
+  "authentication": {
+    "type": "none"
+  },
+  "visibility": "public",
+  "contact": {
+    "email": "contato@labdx.org",
+    "website": "https://labdx.org"
+  },
+  "metadata": {
+    "platform": "WordPress",
+    "implementation": "StifLi Flex MCP",
+    "language": "pt-BR"
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "@context": "https://universal-commerce-protocol.org/v1",
+  "@id": "https://labdx.org/.well-known/ucp",
+  "@type": "CommerceProvider",
+  "type": "CommerceProvider",
+  "name": "LabDX - Agentic AI Solutions",
+  "description": "Consultoria estratégica, palestras executivas e POCs personalizadas em Agentic AI para transformação digital.",
+  "url": "https://labdx.org/loja",
+  "protocol_version": "2026-01-11",
+  "ucp_version": "2026-01-11",
+  "contact": {
+    "maintainer": "LabDX",
+    "email": "contato@labdx.org",
+    "support_url": "https://labdx.org/contato"
+  },
+  "capabilities": {
+    "discovery": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/discovery",
+      "schema": "https://universal-commerce-protocol.org/schemas/discovery.json",
+      "version": "2026-01-01"
+    },
+    "search": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/products",
+      "schema": "https://universal-commerce-protocol.org/schemas/products-search.json",
+      "version": "2026-01-01"
+    },
+    "categories": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/categories",
+      "schema": "https://universal-commerce-protocol.org/schemas/categories.json",
+      "version": "2026-01-01"
+    },
+    "cart": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/carts",
+      "schema": "https://universal-commerce-protocol.org/schemas/cart.json",
+      "version": "2026-01-01"
+    },
+    "shipping": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/shipping/rates",
+      "schema": "https://universal-commerce-protocol.org/schemas/shipping-rates.json",
+      "version": "2026-01-01"
+    },
+    "coupons": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/coupons",
+      "schema": "https://universal-commerce-protocol.org/schemas/coupons.json",
+      "version": "2026-01-01"
+    },
+    "reviews": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/reviews",
+      "schema": "https://universal-commerce-protocol.org/schemas/reviews.json",
+      "version": "2026-01-01"
+    },
+    "checkout": {
+      "endpoint": "https://labdx.org/wp-json/ucp/v1/checkout",
+      "schema": "https://universal-commerce-protocol.org/schemas/checkout.json",
+      "version": "2026-01-01"
+    }
+  },
+  "payment_handlers": [
+    {
+      "id": "google_pay",
+      "type": "tokenization",
+      "display_name": "Google Pay",
+      "params": {
+        "merchant_id": "01234567890123456789",
+        "environment": "TEST"
+      },
+      "supported_networks": ["VISA", "MASTERCARD"]
+    }
+  ],
+  "supported_currencies": [
+    "BRL"
+  ],
+  "mcp": {
+    "binding": "https://labdx.org/.well-known/mcp.json",
+    
+    "address": "https://labdx.org/wp-json/stifli-flex-mcp/v1/sse"
+  },
+  "terms_of_service": "https://labdx.org/terms",
+  "privacy_policy": "https://labdx.org/privacy"
+}

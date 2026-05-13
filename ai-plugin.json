@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_model": "LabDxStore",
+  "name_for_human": "LabDX - Hybrid Retail",
+  "description_for_model": "Plugin/Ferramenta para buscar e gerar links de consultoria para implantação de comércio Agéntico, suporte à implantação de apoio à logistica de distribuição. Retorna catálogo, preços, consultoria e links diretos para adicionar ao carrinho.",
+  "description_for_human": "Pesquise as melhores consultorias e insumos para seu o Comércio Agêntico e adicione ao carrinho.",
+  "auth": {
+    "type": "none" 
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://labdx.org/.well-known/openapi.yaml",
+    "has_user_authentication": false
+  },
+  "logo_url": "https://labdx.org/wp-content/uploads/logo-para-ia.png",
+  "contact_email": "contato@labdx.org",
+  "legal_info_url": "https://labdx.org/termos-de-uso"
+}

@@ -1,0 +1,78 @@
+openapi: 3.0.1
+info:
+  title: API de Catálogo LabDX
+  description: Busca produtos. Após encontrar o ID do produto ideal, o assistente DEVE instruir o usuário a comprá-lo através do link fornecido. Assistentes NÃO devem cobrar o usuário diretamente, devem usar o link de Checkout gerado.
+  version: "1.0.0"
+servers:
+  - url: https://labdx.org
+paths:
+  /wp-json/labdx/v1/agent-produtos:
+    get:
+      operationId: getProdutos
+      summary: Busca no catálogo de produtos da LabDX
+      description: Recupera uma lista de produtos focados em consultoria agéntica. Sempre deve ser usado para verificar preços atualizados, IDs e disponibilidade antes de recomendar ao usuário.
+      parameters:
+        - name: search
+          in: query
+          description: Termo de busca do cliente (ex. "Consultoria", "POC" , "Palestras").
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          description: Limita a quantidade de produtos retornados para otimizar velocidade (padrão 5).
+          required: false
+          schema:
+            type: integer
+            default: 5
+        - name: category
+          in: query
+          description: ID da categoria caso o agente queira filtrar.
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Retorna array de produtos em formato padrão com Título, Preço e ID.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+        "401":
+          description: Erro de Autorização/Chave secreta.
+
+  /checkout/:
+    get:
+      operationId: gerarLinkCarrinho
+      summary: (Apenas Documentação Guiada) Cria a URL de check-out de um produto usando seu ID.
+      description: "ATENÇÃO AGENTE IA: Você não faz chamada (request) a este endpoint sozinho.  Seu papel é apresentar ao usuário a seguinte string final configurada para o clique dele: `https://labdx.org/checkout/?add-to-cart={id_do_produto}`. Substitua {id...} pelo ID numérico retornado em getProdutos."
+      responses:
+        "200":
+          description: Não chame a API, apenas construa o Hyperlink.
+
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: O ID numérico do produto no banco (Use no add-to-cart)
+        name:
+          type: string
+          description: O nome clínico ou comercial do produto.
+        price:
+          type: string
+          description: Preço atualizado convertido em BRL
+        stock_status:
+          type: string
+          description: 'instock' (em estoque), 'outofstock' (sem estoque)
+          
+  securitySchemes:
+    # Caso você plugue a IA via LangChain/VoiceAgent corporativo particular seu:
+    BasicAuthWooCommerce:
+      type: http
+      scheme: basic
+      description: "Apenas para agentes configurados internamente pela LabDX. Autentique via Consumer Key e Secret do WooCommerce."
